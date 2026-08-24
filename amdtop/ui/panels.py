@@ -51,7 +51,8 @@ def render_header(frame: Frame, interval: float, focus: str = "cpu") -> Panel:
     for i, key in enumerate(("cpu", "igpu", "npu"), start=1):
         style = "bold reverse cyan" if key == focus else "dim"
         right.append(f" {i}:{_FOCUS_LABELS[key]} ", style=style)
-    right.append(f"   {interval:.1f}s  q quit  +/- rate  {now}", style="dim")
+    hint = "  ^v k kill" if focus == "igpu" else ""
+    right.append(f"   {interval:.1f}s  q quit  +/- rate{hint}  {now}", style="dim")
 
     grid = Table.grid(expand=True)
     grid.add_column(justify="left")
@@ -132,10 +133,47 @@ def render_mem(m: MemSample, width: int = 28) -> Panel:
     return Panel(body, box=config.PANEL_BOX, title="Memory", title_align="left", border_style="yellow")
 
 
-def _proc_rows(procs: list[GpuProcess], body: Table, width: int = 44) -> None:
+def _fmt_dur(s: float | None) -> str:
+    """Compact process age: ``45s``, ``12m``, ``3h04``, ``2d05`` (<= 5 chars)."""
+    if s is None:
+        return "?"
+    s = int(s)
+    if s < 60:
+        return f"{s}s"
+    m, sec = divmod(s, 60)
+    if m < 60:
+        return f"{m}m"
+    h, m = divmod(m, 60)
+    if h < 24:
+        return f"{h}h{m:02d}"
+    d, h = divmod(h, 24)
+    return f"{d}d{h:02d}"
+
+
+def _proc_rows(
+    procs: list[GpuProcess], body: Table, width: int = 48, selected: int | None = None
+) -> None:
+    header = Text(
+        f"{'PID':>8} {'USER':<8} {'COMMAND':<12} {'GPU':>4} {'VRAM':>6} {'TIME':>5}",
+        style="dim",
+    )
+    body.add_row(header)
     body.add_row(Text("─" * width, style="dim"))
-    for p in procs:
+    for i, p in enumerate(procs):
+        marker = ">" if i == selected else " "
+        pct = "  —" if p.gpu_pct is None else f"{p.gpu_pct:3.0f}%"
+        text = (
+            f"{marker}{p.pid:>7} {(p.user or '?')[:8]:<8} "
+            f"{p.comm[:12]:<12} {pct} {gauges.fmt_bytes(p.vram_bytes):>6} "
+            f"{_fmt_dur(p.runtime_s):>5}"
+        )
+        if i == selected:
+            # One uniform style so the whole row reads as a single color rather
+            # than reverse-video over each field's individual color.
+            body.add_row(Text(text, style="reverse cyan"))
+            continue
         line = Text()
+        line.append(f"{marker}", style="bold cyan")
         line.append(f"{p.pid:>7} ")
         line.append(f"{(p.user or '?')[:8]:<8} ", style="cyan")
         line.append(f"{p.comm[:12]:<12} ", style="white")
@@ -144,6 +182,7 @@ def _proc_rows(procs: list[GpuProcess], body: Table, width: int = 44) -> None:
         else:
             line.append(f"{p.gpu_pct:3.0f}%", style=gauges.ramp_color(p.gpu_pct))
         line.append(f" {gauges.fmt_bytes(p.vram_bytes):>6}", style="magenta")
+        line.append(f" {_fmt_dur(p.runtime_s):>5}", style="yellow")
         body.add_row(line)
 
 
@@ -253,7 +292,13 @@ def _trend_rows(body: Table, g: IgpuSample) -> None:
     body.add_row(grid)
 
 
-def render_igpu(g: IgpuSample, procs: list[GpuProcess] | None = None) -> Panel:
+def render_igpu(
+    g: IgpuSample,
+    procs: list[GpuProcess] | None = None,
+    selected: int | None = None,
+    confirm_pid: int | None = None,
+    status: str | None = None,
+) -> Panel:
     body = Table.grid(expand=True)
     body.add_column()
 
@@ -277,7 +322,14 @@ def render_igpu(g: IgpuSample, procs: list[GpuProcess] | None = None) -> Panel:
     body.add_row(Text())
     _trend_rows(body, g)
     if procs:
-        _proc_rows(procs, body)
+        _proc_rows(procs, body, selected=selected)
+        if confirm_pid is not None:
+            comm = next((p.comm for p in procs if p.pid == confirm_pid), "?")
+            prompt = Text()
+            prompt.append(f" kill {confirm_pid} ({comm})?  y/N ", style="bold reverse red")
+            body.add_row(prompt)
+        elif status:
+            body.add_row(Text(status, style="dim"))
 
     name = g.marketing or "iGPU"
     title = f"iGPU · {name}"

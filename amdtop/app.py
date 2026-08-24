@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import select
+import signal
 import sys
 import termios
 import time
@@ -34,14 +35,38 @@ def _raw_stdin():
 
 
 def _wait_key(timeout: float) -> str | None:
-    """Block up to ``timeout`` s for one keypress; return it or None."""
+    """Block up to ``timeout`` s for one keypress; return it or None.
+
+    Escape sequences (arrow keys arrive as ``\\x1b[A`` / ``\\x1b[B``) are drained
+    as a unit: after an ESC we grab the rest of the sequence with a zero-timeout
+    read so callers see the whole ``\\x1b[A`` instead of a bare ESC.
+    """
     if not sys.stdin.isatty():
         time.sleep(timeout)
         return None
     r, _, _ = select.select([sys.stdin], [], [], timeout)
-    if r:
-        return sys.stdin.read(1)
-    return None
+    if not r:
+        return None
+    ch = sys.stdin.read(1)
+    if ch == "\x1b":
+        r, _, _ = select.select([sys.stdin], [], [], 0)
+        while r:
+            ch += sys.stdin.read(1)
+            r, _, _ = select.select([sys.stdin], [], [], 0)
+    return ch
+
+
+def _kill(pid: int) -> str:
+    """SIGKILL ``pid``; return a short status string describing the outcome."""
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except PermissionError:
+        return f"kill {pid}: permission denied"
+    except ProcessLookupError:
+        return f"kill {pid}: no such process"
+    except OSError as e:
+        return f"kill {pid}: {e.strerror or 'error'}"
+    return f"killed {pid}"
 
 
 def _adjust(interval: float, faster: bool) -> float:
@@ -77,13 +102,33 @@ def run(interval: float = config.DEFAULT_INTERVAL) -> None:
     collector.collect()  # prime CPU deltas
     console = _live_console()
     focus = config.DEFAULT_FOCUS
+    selected = 0  # index into the iGPU proc list (clamped each frame)
+    confirm_pid: int | None = None  # awaiting y/N to kill this pid
+    status: str | None = None  # transient result of the last kill
     with _raw_stdin(), Live(
         console=console, screen=True, auto_refresh=False, transient=True
     ) as live:
         while True:
             frame = collector.collect()
-            live.update(layout.render(frame, interval, focus), refresh=True)
+            procs = frame.gpu_procs
+            # The list is re-sorted every collect, so we track a position, not a
+            # pid; clamp it to the current row count.
+            selected = max(0, min(selected, len(procs) - 1)) if procs else 0
+            live.update(
+                layout.render(
+                    frame, interval, focus, selected, confirm_pid, status
+                ),
+                refresh=True,
+            )
+            status = None  # only show a kill result for a single frame
             key = _wait_key(interval)
+            if confirm_pid is not None:  # pinned kill prompt; wait for a keypress
+                if key is None:
+                    continue  # no key yet -> keep the prompt up, re-render
+                if key in ("y", "Y"):
+                    status = _kill(confirm_pid)
+                confirm_pid = None
+                continue
             if key in ("q", "Q", "\x03"):  # q or Ctrl-C
                 break
             if key in ("+", "="):
@@ -96,3 +141,10 @@ def run(interval: float = config.DEFAULT_INTERVAL) -> None:
                 focus = config.FOCUS_ORDER[
                     (config.FOCUS_ORDER.index(focus) + 1) % len(config.FOCUS_ORDER)
                 ]
+            elif focus == "igpu" and procs:  # process selection + kill
+                if key == "\x1b[A":
+                    selected = max(0, selected - 1)
+                elif key == "\x1b[B":
+                    selected = min(len(procs) - 1, selected + 1)
+                elif key in ("k", "K"):
+                    confirm_pid = procs[selected].pid

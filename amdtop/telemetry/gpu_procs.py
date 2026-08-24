@@ -70,6 +70,39 @@ def _user(pid: int) -> str | None:
         return None
 
 
+_CLK_TCK = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+
+
+def _runtime_s(pid: int, uptime_s: float | None) -> float | None:
+    """Wall-clock age of ``pid`` = system uptime - process start time.
+
+    Start time is field 22 of /proc/<pid>/stat, in clock ticks since boot. The
+    2nd field (comm) may contain spaces/parens, so split on the last ')'.
+    """
+    if uptime_s is None:
+        return None
+    txt = sysfs.read_text(f"{_PROC}/{pid}/stat")
+    if not txt:
+        return None
+    try:
+        fields = txt[txt.rindex(")") + 1 :].split()
+        starttime_ticks = int(fields[19])  # field 22 is index 19 after comm
+    except (ValueError, IndexError):
+        return None
+    age = uptime_s - starttime_ticks / _CLK_TCK
+    return age if age >= 0 else None
+
+
+def _uptime_s() -> float | None:
+    txt = sysfs.read_text("/proc/uptime")
+    if not txt:
+        return None
+    try:
+        return float(txt.split()[0])
+    except (ValueError, IndexError):
+        return None
+
+
 def _client_records(pid: int) -> dict[str, tuple[int | None, int, int]]:
     """{client_id: (engine_ns, vram_bytes, gtt_bytes)} for this card's clients.
 
@@ -146,6 +179,7 @@ class GpuProcessesSource:
         self._prev = cur
         self._prev_t = now
 
+        uptime = _uptime_s()
         procs = [
             GpuProcess(
                 pid=pid,
@@ -156,6 +190,7 @@ class GpuProcessesSource:
                 else None,
                 vram_bytes=vram.get(pid, 0),
                 gtt_bytes=gtt.get(pid, 0),
+                runtime_s=_runtime_s(pid, uptime),
             )
             for pid in vram
         ]

@@ -169,3 +169,35 @@ def test_missing_fd_dir_skipped(tmp_path, monkeypatch):
     _mkproc(proc, 50, "noperm", [], make_fd_dir=False)  # listdir(fd) -> OSError
     src = gpu_procs.GpuProcessesSource()
     assert src.read() == []
+
+
+def _stat_line(starttime_ticks, comm="llama (bench)"):
+    # /proc/<pid>/stat: "pid (comm) state ppid ... starttime ...". comm may hold
+    # spaces/parens, so field 22 (starttime) is index 19 after the last ')'.
+    fields = ["0"] * 22
+    fields[21] = str(starttime_ticks)  # 1-based field 22
+    tail = " ".join(fields[3:])  # fields after comm+state (we only need index 19)
+    return f"7 ({comm}) R {tail}"
+
+
+def test_runtime_is_uptime_minus_starttime(tmp_path, monkeypatch):
+    proc = _setup(tmp_path, monkeypatch, [0.0, 0.0])
+    monkeypatch.setattr(gpu_procs, "_CLK_TCK", 100)
+    (proc / "7").mkdir()
+    (proc / "7" / "stat").write_text(_stat_line(500_000))  # 5000s since boot
+    assert gpu_procs._runtime_s(7, uptime_s=8000.0) == 3000.0  # 8000 - 5000
+
+
+def test_runtime_none_when_uptime_unknown(tmp_path, monkeypatch):
+    proc = _setup(tmp_path, monkeypatch, [0.0, 0.0])
+    (proc / "7").mkdir()
+    (proc / "7" / "stat").write_text(_stat_line(100))
+    assert gpu_procs._runtime_s(7, uptime_s=None) is None
+
+
+def test_runtime_comm_with_spaces_and_parens(tmp_path, monkeypatch):
+    proc = _setup(tmp_path, monkeypatch, [0.0, 0.0])
+    monkeypatch.setattr(gpu_procs, "_CLK_TCK", 100)
+    (proc / "9").mkdir()
+    (proc / "9" / "stat").write_text(_stat_line(200_000, comm="weird ) name"))
+    assert gpu_procs._runtime_s(9, uptime_s=5000.0) == 3000.0  # 5000 - 2000

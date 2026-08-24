@@ -12,9 +12,9 @@ from . import panels
 from .. import config
 
 _FULL = {
-    "cpu": lambda f: panels.render_cpu(f.cpu),
-    "igpu": lambda f: panels.render_igpu(f.igpu, f.gpu_procs),
-    "npu": lambda f: panels.render_npu(f.npu),
+    "cpu": lambda f, **kw: panels.render_cpu(f.cpu),
+    "igpu": lambda f, **kw: panels.render_igpu(f.igpu, f.gpu_procs, **kw),
+    "npu": lambda f, **kw: panels.render_npu(f.npu),
 }
 _COMPACT = {
     "cpu": lambda f: panels.render_cpu_compact(f.cpu),
@@ -23,14 +23,24 @@ _COMPACT = {
 }
 
 
-def render(frame: Frame, interval: float, focus: str = config.DEFAULT_FOCUS) -> Layout:
+def render(
+    frame: Frame,
+    interval: float,
+    focus: str = config.DEFAULT_FOCUS,
+    selected: int = 0,
+    confirm_pid: int | None = None,
+    status: str | None = None,
+) -> Layout:
+    kw = {}
+    if focus == "igpu":
+        kw = {"selected": selected, "confirm_pid": confirm_pid, "status": status}
     root = Layout()
     root.split_column(
         Layout(panels.render_header(frame, interval, focus), name="header", size=3),
         Layout(name="body"),
     )
     root["body"].split_row(
-        Layout(_FULL[focus](frame), name="left", ratio=2),
+        Layout(_FULL[focus](frame, **kw), name="left", ratio=2),
         Layout(name="side", ratio=1),
     )
     others = [k for k in config.FOCUS_ORDER if k != focus]

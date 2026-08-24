@@ -108,6 +108,7 @@ class GpuProcess:
     gpu_pct: float | None  # None when the driver exposes no per-engine busy time
     vram_bytes: int
     gtt_bytes: int
+    runtime_s: float | None = None  # wall-clock age of the process, None if unknown
 
 
 @dataclass
