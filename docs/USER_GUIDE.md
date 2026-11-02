@@ -33,11 +33,14 @@ required) plus standard `/proc` and `/sys` interfaces.
 
 ## Throttle counters
 
-The firmware exposes seven monotonic "throttle residency" accumulators - one per
-throttler. Each is a running counter that only goes up; a positive change between
-two samples (the delta) means that throttler was engaged during that interval.
-`amdtop` plots the per-sample delta and shows both the absolute accumulator and
-the latest delta in each plot header, for example `spl 52 (+4)`.
+The firmware exposes seven monotonic "throttle residency" accumulators, one per
+throttler. Each counts the milliseconds that throttler has been engaged since boot.
+`amdtop` turns the change between two samples into a **residency percentage**: the
+share of the last interval during which that limit was holding the chip back. `0%`
+means the limit was never hit; `100%` means it was in force the whole time.
+
+Each plot header shows the current residency, the `peak` within the session, and the
+`total` time spent throttled since boot, for example `spl 100 %  peak 100%  total 1m`.
 
 On this APU the CPU and GPU share a single package power budget, so a heavy GPU
 workload is frequently clamped by the package power limits (fppt/sppt/spl) rather
@@ -87,6 +90,6 @@ session extremes (the sticky min and max learned since `amdtop` started), so the
 bars grow to fill the plot as the run's true range emerges. The plot header shows
 the current value plus that session `min` and `max`.
 
-For the throttle plots the plotted quantity is the per-sample delta (the increment
-in the residency accumulator since the previous sample), so a bar appears only when
-that throttler was actually engaged during the interval.
+For the throttle plots the plotted quantity is the residency percentage per sample,
+on a fixed `0..100%` scale, so a bar appears only when that throttler was engaged
+during the interval and a full-height bar means it was engaged for the whole interval.

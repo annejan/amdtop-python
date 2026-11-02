@@ -56,3 +56,17 @@ def test_wide_igpu_panel_keeps_two_column_bar_plots():
     assert "trends · 10m" not in text
     assert "…" not in text
     assert "min 600  max 2900  · 10m" in text
+
+
+def test_throttle_plots_show_residency_percent():
+    text = "\n".join(_render(160))
+    assert "300 %" in text  # cur of the synthetic series
+    assert "peak 300%" in text
+    assert "total 2m" in text  # 123456 ms accumulator
+    assert "(+" not in text  # no raw accumulator deltas any more
+
+
+def test_compact_throttle_rows_show_percent():
+    lines = [l for l in _render(80) if l.lstrip("│ ").startswith("spl")]
+    assert len(lines) == 1
+    assert "300 %" in lines[0] and "peak 300%" in lines[0]

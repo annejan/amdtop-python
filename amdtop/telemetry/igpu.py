@@ -1,6 +1,8 @@
-"""Integrated GPU (Radeon 8060S) telemetry from amdgpu sysfs + gpu_metrics."""
+"""Integrated GPU (Radeon 8000S / 800M) telemetry from amdgpu sysfs + gpu_metrics."""
 
 from __future__ import annotations
+
+import time
 
 from .. import config
 from . import sysfs
@@ -8,6 +10,19 @@ from .decode import cu_count, decode_igpu
 from .gpu_metrics import THROTTLE_NAMES, GpuMetrics
 from .history import MetricHistory
 from .sample import IgpuSample
+
+
+def throttle_pct(delta_ms: int, elapsed_s: float) -> float | None:
+    """Share of ``elapsed_s`` a throttler was engaged, in percent.
+
+    The throttle_residency accumulators count milliseconds spent throttled
+    (measured: each saturates at ~1000 per second under a sustained limit).
+    Returns None when the interval is unusable or the counter went backwards
+    (firmware reset); clamps small timing jitter above 100%.
+    """
+    if elapsed_s <= 0 or delta_ms < 0:
+        return None
+    return min(100.0, delta_ms / (elapsed_s * 1000.0) * 100.0)
 
 
 class IgpuSource:
@@ -18,9 +33,11 @@ class IgpuSource:
         self._sclk_hist = MetricHistory(config.IGPU_HISTORY_WINDOW_S)
         self._temp_hist = MetricHistory(config.IGPU_HISTORY_WINDOW_S)
         self._power_hist = MetricHistory(config.IGPU_HISTORY_WINDOW_S)
-        # Previous throttle accumulators, for frame-to-frame delta detection.
+        # Previous throttle accumulators and when they were read, for
+        # frame-to-frame residency.
         self._throttle_prev: list[int] | None = None
-        # One delta-history per throttler, for per-counter trend plots.
+        self._throttle_prev_t: float | None = None
+        # One residency-% history per throttler, for per-counter trend plots.
         self._throttle_hist = [
             MetricHistory(config.IGPU_HISTORY_WINDOW_S) for _ in THROTTLE_NAMES
         ]
@@ -49,11 +66,14 @@ class IgpuSource:
         throttle_absolute: list = [None] * len(THROTTLE_NAMES)
         if gm is not None and gm.throttle_residency:
             cur = gm.throttle_residency
-            prev = self._throttle_prev
-            if prev is not None and len(prev) == len(cur):
+            now = time.monotonic()
+            prev, prev_t = self._throttle_prev, self._throttle_prev_t
+            if prev is not None and prev_t is not None and len(prev) == len(cur):
                 for i, (c, p) in enumerate(zip(cur, prev)):
-                    self._throttle_hist[i].record(float(c - p))
-            self._throttle_prev = cur
+                    pct = throttle_pct(c - p, now - prev_t)
+                    if pct is not None:
+                        self._throttle_hist[i].record(pct)
+            self._throttle_prev, self._throttle_prev_t = cur, now
             throttle_history = [h.series(width) for h in self._throttle_hist]
             throttle_absolute = list(cur)
 

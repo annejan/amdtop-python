@@ -94,8 +94,8 @@ class GpuMetrics:
     gfx_maxfreq: int | None
 
     # Monotonic per-throttler residency accumulators (prochot, spl, fppt, sppt,
-    # thm_core, thm_gfx, thm_soc). Absolute values are meaningless; a positive
-    # frame-to-frame delta means that throttler was engaged during the interval.
+    # thm_core, thm_gfx, thm_soc), in milliseconds spent throttled. Measured on
+    # Krackan Point: a pegged limiter adds ~1000 per second.
     throttle_residency: list[int] = field(default_factory=list)
 
     raw: bytes = field(default=b"", repr=False)

@@ -192,27 +192,46 @@ def _proc_rows(
 _THROTTLE_THERMAL = {"thm_core", "thm_gfx", "thm_soc"}
 
 
+def _is_throttle(spec) -> bool:
+    return len(spec) > 5
+
+
+def _scale(spec) -> tuple[float | None, float | None]:
+    """Vertical range: 0..100% for throttle residency, session extremes otherwise."""
+    if _is_throttle(spec):
+        return 0.0, 100.0
+    return spec[1].min, spec[1].max
+
+
+def _fmt_throttled(ms: int | None) -> str:
+    """Total time spent throttled since boot, from the raw ms accumulator."""
+    return "" if ms is None else f"total {_fmt_dur(ms / 1000.0)}"
+
+
 def _plot_block(spec, *, win: str, label_w: int, gutter_w: int, height: int) -> list[Text]:
     """Render one trend plot (header + gutter + bars) as a list of Text lines."""
     label, series, unit, color, fmt = spec[:5]
-    absv = spec[5] if len(spec) > 5 else None
-    lo, hi = series.min, series.max
+    lo, hi = _scale(spec)
     head = Text()
-    if absv is not None:
-        # Throttle counter: label links to the user guide (OSC 8), and the value
-        # shows the absolute accumulator plus the plotted per-sample delta. Link
-        # only the keyword itself so the underline doesn't extend into padding.
+    if _is_throttle(spec):
+        # Throttle residency: label links to the user guide (OSC 8). Link only
+        # the keyword itself so the underline doesn't extend into padding.
         link = f"{config.USER_GUIDE_URL}#{label}"
         head.append(label, style=f"bold link {link}")
         head.append(" " * (label_w - len(label) + 1))
-        delta = "n/a" if series.cur is None else f"{series.cur:+.0f}"
-        head.append(f"{absv:>10} ({delta})  ", style=color)
+        cur = "n/a" if series.cur is None else fmt.format(series.cur)
+        head.append(f"{cur:>5} {unit}  ", style=color)
+        if series.max is not None:
+            head.append(f"peak {fmt.format(series.max)}{unit}", style="dim")
+        total = _fmt_throttled(spec[5])
+        if total:
+            head.append(f"  {total}", style="dim")
     else:
         head.append(f"{label:<{label_w}} ", style="bold")
         cur = "n/a" if series.cur is None else fmt.format(series.cur)
         head.append(f"{cur:>5} {unit}  ", style=color)
-    if lo is not None and hi is not None:
-        head.append(f"min {fmt.format(lo)}  max {fmt.format(hi)}", style="dim")
+        if lo is not None and hi is not None:
+            head.append(f"min {fmt.format(lo)}  max {fmt.format(hi)}", style="dim")
     head.append(f"  · {win}", style="dim")
     out = [head]
     lines = gauges.plot(series.points, height, lo=lo, hi=hi, color=color)
@@ -244,7 +263,7 @@ def _trend_rows(body: Table, g: IgpuSample) -> None:
                 absv = None
                 if i < len(g.throttle_absolute):
                     absv = g.throttle_absolute[i]
-                thr[name] = (name, g.throttle_history[i], "d", color, "{:.0f}", absv)
+                thr[name] = (name, g.throttle_history[i], "%", color, "{:.0f}", absv)
 
     # Two columns. Left: the analog trends (clock, thermal) plus GFX-die thermal
     # throttle. Right: the package-power family stacked by time window --
@@ -271,8 +290,9 @@ def _trend_rows(body: Table, g: IgpuSample) -> None:
         (
             len(s[4].format(v))
             for s in all_specs
-            if s[1] is not None and s[1].min is not None
-            for v in (s[1].min, s[1].max)
+            if s[1] is not None
+            for v in _scale(s)
+            if v is not None
         ),
         default=1,
     )
@@ -283,23 +303,30 @@ def _trend_rows(body: Table, g: IgpuSample) -> None:
 def _spark_row(spec, *, label_w: int, value_w: int, spark_w: int) -> Text:
     """One-line trend: label, current value, sparkline tail, session range."""
     label, series, unit, color, fmt = spec[:5]
-    is_throttle = len(spec) > 5
+    lo, hi = _scale(spec)
     row = Text()
-    if is_throttle:
+    if _is_throttle(spec):
         link = f"{config.USER_GUIDE_URL}#{label}"
         row.append(label, style=f"bold link {link}")
         row.append(" " * (label_w - len(label) + 1))
-        val = "n/a" if series.cur is None else f"{series.cur:+.0f}"
     else:
         row.append(f"{label:<{label_w}} ", style="bold")
-        val = "n/a" if series.cur is None else f"{fmt.format(series.cur)} {unit}"
+    val = "n/a" if series.cur is None else f"{fmt.format(series.cur)} {unit}"
     row.append(f"{val:>{value_w}} ", style=color)
     if spark_w > 0:
-        row.append_text(gauges.sparkline(series.points[-spark_w:], lo=series.min,
-                                         hi=series.max, color=color))
-    if series.min is not None and series.max is not None:
-        row.append(f" {fmt.format(series.min)}..{fmt.format(series.max)}", style="dim")
+        row.append_text(gauges.sparkline(series.points[-spark_w:], lo=lo, hi=hi,
+                                         color=color))
+    row.append(_range_text(spec), style="dim")
     return row
+
+
+def _range_text(spec) -> str:
+    series, unit, fmt = spec[1], spec[2], spec[4]
+    if _is_throttle(spec):
+        return "" if series.max is None else f" peak {fmt.format(series.max)}{unit}"
+    if series.min is None or series.max is None:
+        return ""
+    return f" {fmt.format(series.min)}..{fmt.format(series.max)}"
 
 
 class _TrendPlots:
@@ -350,8 +377,7 @@ class _TrendPlots:
         specs = [s for s in self.col1[:2] + self.col2[:1] + self.col1[2:] + self.col2[1:]
                  if s is not None and s[1] is not None]
         value_w = 9
-        ranges = max((len(f" {s[4].format(s[1].min)}..{s[4].format(s[1].max)}")
-                      for s in specs if s[1].min is not None), default=0)
+        ranges = max((len(_range_text(s)) for s in specs), default=0)
         fixed = self.label_w + 1 + value_w + 1 + ranges
         n_points = max((len(s[1].points) for s in specs), default=0)
         spark_w = max(0, min(n_points, max_width - fixed))
