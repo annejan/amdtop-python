@@ -77,7 +77,7 @@ class GpuMetrics:
 
     dram_reads: int | None
     dram_writes: int | None
-    ipu_reads: int | None  # NPU share of DRAM traffic, same unit as dram_*
+    ipu_reads: int | None  # NPU traffic counter; unit undocumented (see user guide)
     ipu_writes: int | None
 
     socket_power: float | None

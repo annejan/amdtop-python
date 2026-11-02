@@ -91,7 +91,8 @@ class NpuSample:
     power_state: str | None
     fw_version: str | None
     name: str | None
-    # NPU share of DRAM traffic from gpu_metrics ipu_reads/ipu_writes (MB/s).
+    # Firmware NPU traffic counters gpu_metrics ipu_reads/ipu_writes. Nominally
+    # MB/s like dram_*, but reads measured ~4x below the real DRAM delta.
     dram_read_mbps: int | None = None
     dram_write_mbps: int | None = None
 

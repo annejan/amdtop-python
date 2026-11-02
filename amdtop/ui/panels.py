@@ -585,8 +585,15 @@ def render_npu(n: NpuSample, procs: list[NpuProcess] | None = None) -> Panel:
         stats.append(f"{n.power_state}", style="green" if n.power_state == "D0" else "dim")
     body.add_row(stats)
     if n.dram_read_mbps is not None or n.dram_write_mbps is not None:
-        body.add_row(Text(f"mem {_dram_text(n.dram_read_mbps, n.dram_write_mbps)}",
-                          style="blue"))
+        # Firmware ipu_reads/ipu_writes: unit undocumented and not comparable with
+        # the dram gauge (reads measured ~4x low on Krackan), so no unit is shown.
+        # The label links to the user guide's explanation (OSC 8).
+        ipu = Text()
+        ipu.append("ipu", style=f"bold link {config.USER_GUIDE_URL}#ipu")
+        ipu.append(f" R {_gbps(n.dram_read_mbps)}  W {_gbps(n.dram_write_mbps)}",
+                   style="blue")
+        ipu.append("  fw counter, see guide", style="dim")
+        body.add_row(ipu)
     ident = Text(f"{n.name or 'npu'}  fw {n.fw_version or '?'}", style="dim")
     body.add_row(ident)
     if procs:

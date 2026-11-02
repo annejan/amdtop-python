@@ -16,6 +16,8 @@ required) plus standard `/proc` and `/sys` interfaces.
   - [fppt](#fppt)
   - [sppt](#sppt)
   - [spl](#spl)
+- [NPU metrics](#npu-metrics)
+  - [ipu](#ipu)
 - [Reading the trend plots](#reading-the-trend-plots)
 
 ## iGPU metrics
@@ -30,6 +32,28 @@ required) plus standard `/proc` and `/sys` interfaces.
 - **temp** - GFX-die edge temperature in degrees C.
 - **power** - GFX-rail power draw in watts (the GPU's own power, separate from the
   CPU cores).
+- **dram** - DRAM traffic of the whole chip (CPU, GPU, NPU, display), read plus
+  write, as a share of the installed RAM's peak bandwidth. The split after the gauge
+  is in GB/s. This is the number to trust for "how much memory bandwidth is in use".
+
+## NPU metrics
+
+- **busy** / **col0..colN** - activity of each NPU column, in percent.
+- **clk**, **W**, **D0** - NPU clock, NPU power, and PCI power state.
+
+### ipu
+
+The `ipu R .. W ..` line shows the firmware's own NPU memory-traffic counters
+(`ipu_reads` / `ipu_writes` in `gpu_metrics`). The firmware does not document their
+unit, so `amdtop` prints them without one. Treat them as relative numbers: they go
+up and down with the NPU's memory traffic, but are not a bandwidth you can compare
+with the `dram` gauge.
+
+Measured on a Krackan Point laptop running an LLM on the NPU: pausing the workload
+dropped `dram` reads from about 55 GB/s to 3 GB/s, while `ipu` reads went from 13 to 0.
+So the NPU's real read traffic was about 4x the `ipu` read value. Writes matched more
+closely (about 1.2x). To see the NPU's real bandwidth, watch the `dram` gauge in the
+iGPU panel with and without the NPU workload.
 
 ## Throttle counters
 

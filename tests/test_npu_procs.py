@@ -115,4 +115,6 @@ def test_npu_panels_list_processes():
 def test_npu_panel_shows_npu_memory_traffic():
     n = _npu()
     n.dram_read_mbps, n.dram_write_mbps = 8346, 2773
-    assert "mem R 8.3  W 2.8 GB/s" in _text(panels.render_npu(n))
+    text = _text(panels.render_npu(n))
+    assert "ipu R 8.3  W 2.8  fw counter, see guide" in text
+    assert "GB/s" not in text  # unit is undocumented, so none is claimed
