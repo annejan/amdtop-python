@@ -110,3 +110,9 @@ def test_npu_panels_list_processes():
     assert "flm-real" in full and "whisper" in full and "MEM" in full
     compact = _text(panels.render_npu_compact(_npu(), procs), width=40)
     assert "flm-real 6G  +1" in compact
+
+
+def test_npu_panel_shows_npu_memory_traffic():
+    n = _npu()
+    n.dram_read_mbps, n.dram_write_mbps = 8346, 2773
+    assert "mem R 8.3  W 2.8 GB/s" in _text(panels.render_npu(n))

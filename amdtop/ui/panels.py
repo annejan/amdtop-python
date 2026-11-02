@@ -418,6 +418,26 @@ class _TrendPlots:
         return Measurement(1, options.max_width)
 
 
+def _gbps(mbps: int | None) -> str:
+    return "n/a" if mbps is None else f"{mbps / 1000:.1f}"
+
+
+def _dram_text(read: int | None, write: int | None) -> str:
+    """``R 37.0  W 5.1 GB/s`` from MB/s counters."""
+    return f"R {_gbps(read)}  W {_gbps(write)} GB/s"
+
+
+def _dram_row(g: IgpuSample, width: int, *, compact: bool = False) -> Text | None:
+    """SoC DRAM traffic as a share of the installed RAM's peak bandwidth."""
+    total = g.dram_total_mbps
+    if total is None:
+        return None
+    pct = 100.0 * total / config.MEM_BW_PEAK_MBPS if config.MEM_BW_PEAK_MBPS else None
+    suffix = (f"{_gbps(total)} GB/s" if compact
+              else _dram_text(g.dram_read_mbps, g.dram_write_mbps))
+    return gauges.labeled_meter("dram", pct, width, suffix)
+
+
 def render_igpu(
     g: IgpuSample,
     procs: list[GpuProcess] | None = None,
@@ -445,6 +465,10 @@ def render_igpu(
         r = right[i] if i < len(right) else Text()
         meters.add_row(l, r)
     body.add_row(meters)
+    # Whole-SoC DRAM traffic (CPU + GPU + NPU), so it gets its own full row.
+    dram = _dram_row(g, 16)
+    if dram is not None:
+        body.add_row(dram)
     body.add_row(Text())
     _trend_rows(body, g)
     if procs:
@@ -493,6 +517,9 @@ def render_igpu_compact(g: IgpuSample) -> Panel:
     body.add_row(gauges.labeled_meter("busy", g.busy_pct, 10))
     body.add_row(_mem_row("vram", g.vram_used, g.vram_total, width=10))
     body.add_row(_mem_row("gtt", g.gtt_used, g.gtt_total, width=10))
+    dram = _dram_row(g, 10, compact=True)
+    if dram is not None:
+        body.add_row(dram)
     stats = Text()
     if g.sclk_mhz is not None:
         stats.append(f"{g.sclk_mhz} MHz  ", style="cyan")
@@ -557,6 +584,9 @@ def render_npu(n: NpuSample, procs: list[NpuProcess] | None = None) -> Panel:
     if n.power_state:
         stats.append(f"{n.power_state}", style="green" if n.power_state == "D0" else "dim")
     body.add_row(stats)
+    if n.dram_read_mbps is not None or n.dram_write_mbps is not None:
+        body.add_row(Text(f"mem {_dram_text(n.dram_read_mbps, n.dram_write_mbps)}",
+                          style="blue"))
     ident = Text(f"{n.name or 'npu'}  fw {n.fw_version or '?'}", style="dim")
     body.add_row(ident)
     if procs:

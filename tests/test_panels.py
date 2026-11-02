@@ -70,3 +70,34 @@ def test_compact_throttle_rows_show_percent():
     lines = [l for l in _render(80) if l.lstrip("│ ").startswith("spl")]
     assert len(lines) == 1
     assert "300 %" in lines[0] and "peak 300%" in lines[0]
+
+
+def _with_dram(g, rd=37000, wr=5000):
+    g.dram_read_mbps, g.dram_write_mbps = rd, wr
+    return g
+
+
+def test_igpu_panel_shows_dram_traffic_as_share_of_peak(monkeypatch):
+    from amdtop import config
+    monkeypatch.setattr(config, "MEM_BW_PEAK_MBPS", 84000.0)
+    c = Console(width=100, record=True, color_system=None)
+    c.print(panels.render_igpu(_with_dram(_igpu())))
+    text = c.export_text()
+    assert "dram" in text and "50%" in text and "R 37.0  W 5.0 GB/s" in text
+
+
+def test_compact_igpu_dram_fits_sidebar(monkeypatch):
+    from amdtop import config
+    monkeypatch.setattr(config, "MEM_BW_PEAK_MBPS", 84000.0)
+    c = Console(width=40, record=True, color_system=None)
+    c.print(panels.render_igpu_compact(_with_dram(_igpu())))
+    lines = c.export_text().splitlines()
+    dram = [l for l in lines if "dram" in l]
+    assert len(dram) == 1 and "42.0 GB/s" in dram[0]
+    assert not any(l.strip("│ ") == "GB/s" for l in lines)  # no wrapped tail
+
+
+def test_igpu_panel_without_dram_counters_has_no_dram_row():
+    c = Console(width=100, record=True, color_system=None)
+    c.print(panels.render_igpu(_igpu()))
+    assert "dram" not in c.export_text()

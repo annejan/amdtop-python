@@ -64,3 +64,10 @@ def test_short_blob_raises():
 
 def test_read_missing_path_returns_none():
     assert gm.read("/nonexistent/gpu_metrics") is None
+
+
+def test_dram_and_ipu_traffic(blob):
+    # Strix Halo fixture captured at idle: some SoC traffic, NPU idle.
+    m = gm.parse(blob)
+    assert (m.dram_reads, m.dram_writes) == (866, 282)
+    assert (m.ipu_reads, m.ipu_writes) == (0, 0)

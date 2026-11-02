@@ -33,11 +33,12 @@ class GpuMetricsNpuSource(NpuSource):
 
     def read(self, gm: GpuMetrics | None) -> NpuSample:
         activity: list[int] = []
-        power = clk = None
+        power = clk = rd = wr = None
         if gm is not None:
             activity = list(gm.ipu_activity)
             power = gm.ipu_power
             clk = gm.ipuclk
+            rd, wr = gm.ipu_reads, gm.ipu_writes
 
         return NpuSample(
             present=self._present,
@@ -47,4 +48,6 @@ class GpuMetricsNpuSource(NpuSource):
             power_state=sysfs.read_text(self._power_state_path),
             fw_version=self._fw,
             name=self._name,
+            dram_read_mbps=rd,
+            dram_write_mbps=wr,
         )

@@ -30,7 +30,7 @@ _FMT = (
     "HBB"      # common_header: structure_size, format_revision, content_revision
     "HH16HH"   # temperature: gfx, soc, core[16], skin  (centi-degC)
     "HH8H16H"  # activity: gfx, vcn, ipu[8], core_c0[16]  (percent)
-    "4H"       # dram_reads, dram_writes, ipu_reads, ipu_writes
+    "4H"       # dram_reads, dram_writes, ipu_reads, ipu_writes  (MB/s)
     "xxQ"      # (pad) system_clock_counter
     "IHxx"     # socket_power, ipu_power, (pad)          (milliwatts)
     "IIII"     # apu_power, gfx_power, dgpu_power, all_core_power  (milliwatts)
@@ -77,6 +77,8 @@ class GpuMetrics:
 
     dram_reads: int | None
     dram_writes: int | None
+    ipu_reads: int | None  # NPU share of DRAM traffic, same unit as dram_*
+    ipu_writes: int | None
 
     socket_power: float | None
     ipu_power: float | None
@@ -138,8 +140,8 @@ def parse(blob: bytes) -> GpuMetrics:
 
     dram_reads = _clean16(nxt())
     dram_writes = _clean16(nxt())
-    nxt()  # ipu_reads
-    nxt()  # ipu_writes
+    ipu_reads = _clean16(nxt())
+    ipu_writes = _clean16(nxt())
     nxt()  # system_clock_counter
 
     socket_power = watts32(nxt())
@@ -185,6 +187,8 @@ def parse(blob: bytes) -> GpuMetrics:
         core_activity=core_activity,
         dram_reads=dram_reads,
         dram_writes=dram_writes,
+        ipu_reads=ipu_reads,
+        ipu_writes=ipu_writes,
         socket_power=socket_power,
         ipu_power=ipu_power,
         apu_power=apu_power,

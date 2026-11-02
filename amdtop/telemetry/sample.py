@@ -91,6 +91,9 @@ class NpuSample:
     power_state: str | None
     fw_version: str | None
     name: str | None
+    # NPU share of DRAM traffic from gpu_metrics ipu_reads/ipu_writes (MB/s).
+    dram_read_mbps: int | None = None
+    dram_write_mbps: int | None = None
 
     @property
     def activity_max(self) -> float | None:
