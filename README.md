@@ -1,7 +1,7 @@
 # amdtop
 
-A [btop](https://github.com/aristocratos/btop)-style terminal monitor for **AMD Strix Halo** APUs
-(Ryzen AI MAX series) that shows the **CPU, integrated GPU, and NPU side by side** in
+A [btop](https://github.com/aristocratos/btop)-style terminal monitor for **AMD Ryzen AI** APUs
+(Strix Halo, Strix Point, Krackan Point) that shows the **CPU, integrated GPU, and NPU side by side** in
 one live-refreshing view.
 
 ![amdtop iGPU view with 10-minute sclk/temp trend plots](docs/amdtop-igpu.png)
@@ -9,7 +9,7 @@ one live-refreshing view.
 ## Why
 
 Standard tools show one engine at a time (`btop`/`htop` for CPU, `amdgpu_top`/`radeontop` for
-the GPU, and the NPU is largely invisible). On a Strix Halo APU all three compute engines share
+the GPU, and the NPU is largely invisible). On these APUs all three compute engines share
 one power/thermal/memory budget, so watching them together is what actually tells you where a
 workload is bottlenecked. `amdtop` puts CPU, iGPU, NPU, and system memory on a single screen.
 
@@ -18,7 +18,7 @@ workload is bottlenecked. `amdtop` puts CPU, iGPU, NPU, and system memory on a s
 - **CPU** — per-thread utilization bars, per-core clocks, package power, Tctl temperature, load average.
 - **iGPU** — busy %, unified VRAM/GTT usage, sclk/fclk/uclk, edge temperature, GPU power, plus
   **10-minute sclk & temperature trend plots**. PCI-ID decode surfaces the codename
-  (**Strix Halo**) and architecture (**RDNA 3.5 · gfx1151**).
+  (e.g. **Strix Halo**, **Krackan Point**) and architecture (e.g. **RDNA 3.5 · gfx1151**).
 - **NPU (XDNA)** — per-column activity, IPU power and clock, power state, firmware version — all
   **without root**, read from the amdgpu `gpu_metrics` table.
 - **Memory** — RAM and swap usage, available, cached.
@@ -26,15 +26,20 @@ workload is bottlenecked. `amdtop` puts CPU, iGPU, NPU, and system memory on a s
 
 ## Requirements
 
-- An AMD Strix Halo APU (Ryzen AI MAX / Radeon 8000S iGPU + XDNA NPU) on Linux with the
-  `amdgpu` and `amdxdna` drivers loaded.
+- An AMD Ryzen AI APU with an RDNA 3.5 iGPU and an XDNA NPU (see [Tested hardware](#tested-hardware))
+  on Linux with the `amdgpu` and `amdxdna` drivers loaded.
 - Python 3.10+ and [`rich`](https://github.com/Textualize/rich).
 - No root required — all telemetry comes from read-only `sysfs` / `/proc`.
 
 ## Install
 
 ```bash
-pip install rich
+pipx install .          # or: pipx install -e . to track a git checkout
+```
+
+Or with plain pip in a virtualenv:
+
+```bash
 pip install -e .        # provides the `amdtop` command
 ```
 
@@ -56,7 +61,7 @@ pane while the other two collapse to compact summary rows.
 ## How it works
 
 The heart of the tool is the amdgpu **`gpu_metrics_v3_0`** table exposed read-only at
-`/sys/class/drm/card1/device/gpu_metrics`. On Strix Halo this single 264-byte blob reports
+`/sys/class/drm/card*/device/gpu_metrics`. On these APUs this single 264-byte blob reports
 per-core CPU activity, iGPU (gfx) activity, and **NPU (IPU) activity/power/clock** — so no
 privileged helper is needed for NPU visibility. The remaining data comes from `/proc/stat`,
 `cpufreq`, `k10temp`, `/proc/meminfo`, and amdgpu memory sysfs.
@@ -85,8 +90,13 @@ pip install pytest
 pytest
 ```
 
-## Notes
+## Tested hardware
 
-Field offsets, scales, and PCI-ID mappings were validated against a live Ryzen AI MAX+ 395
-(Radeon 8060S). Other Strix-family parts (Strix Point, Krackan, Phoenix) are in the decode
-table but the metrics layout has only been verified on Strix Halo.
+| APU | CPU | iGPU | NPU | Memory | Status |
+|---|---|---|---|---|---|
+| Strix Halo | Ryzen AI MAX+ 395 | Radeon 8060S (gfx1151) | XDNA 2 | LPDDR5X | verified: field offsets, scales, PCI IDs |
+| Krackan Point | Ryzen AI 7 PRO 350 | Radeon 860M (gfx1152, 8 CU) | XDNA 2, 8 columns | socketed DDR5 | verified: all panels, NPU activity under load (kernel 7.3) |
+
+Strix Point (gfx1150) and Phoenix (gfx1103) are in the decode table but have not been
+tested. If you run amdtop on one of them, please open an issue with the output of
+`amdtop --once`.

@@ -12,7 +12,7 @@ from . import __version__, app, config
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="amdtop",
-        description="btop-style CPU/iGPU/NPU monitor for AMD Strix Halo APUs.",
+        description="btop-style CPU/iGPU/NPU monitor for AMD Ryzen AI APUs.",
     )
     parser.add_argument(
         "-i", "--interval", type=float, default=config.DEFAULT_INTERVAL,
