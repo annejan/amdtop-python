@@ -60,6 +60,8 @@ GTT_USED = f"{DRM_DEVICE}/mem_info_gtt_used"
 GTT_TOTAL = f"{DRM_DEVICE}/mem_info_gtt_total"
 
 NPU_DEVICE = _discover_npu_device()
+# PCI address of the NPU (e.g. 0000:c5:00.1), matched against accel fdinfo.
+NPU_PDEV = os.path.basename(os.path.realpath(NPU_DEVICE)) if os.path.exists(NPU_DEVICE) else None
 
 PROC_STAT = "/proc/stat"
 CPUFREQ_GLOB = "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq"
@@ -89,6 +91,8 @@ DEFAULT_FOCUS = "igpu"
 
 # Max GPU-using processes listed in the iGPU panel (sorted by GPU % desc).
 GPU_PROC_TOP_N = 5
+# Max NPU-using processes listed in the NPU panel (sorted by NPU %, then memory).
+NPU_PROC_TOP_N = 5
 
 # iGPU sclk/temp trend sparklines: sliding-window span (seconds) and the fixed
 # number of buckets (columns) the window is downsampled into for display. The

@@ -20,7 +20,8 @@ workload is bottlenecked. `amdtop` puts CPU, iGPU, NPU, and system memory on a s
   **10-minute sclk & temperature trend plots**. PCI-ID decode surfaces the codename
   (e.g. **Strix Halo**, **Krackan Point**) and architecture (e.g. **RDNA 3.5 · gfx1151**).
 - **NPU (XDNA)** — per-column activity, IPU power and clock, power state, firmware version — all
-  **without root**, read from the amdgpu `gpu_metrics` table.
+  **without root**, read from the amdgpu `gpu_metrics` table — plus the **processes using the
+  NPU** and their NPU memory, from the `amdxdna` DRM fdinfo.
 - **Memory** — RAM and swap usage, available, cached.
 - Live refresh with adjustable rate; single-snapshot mode for scripting.
 
@@ -82,14 +83,19 @@ amdtop/
     igpu.py          amdgpu sysfs + gpu_metrics
     memory.py        /proc/meminfo
     npu.py           NpuSource ABC + no-root GpuMetricsNpuSource
+    gpu_procs.py     per-process iGPU busy % and VRAM from amdgpu DRM fdinfo
+    npu_procs.py     per-process NPU memory from amdxdna accel fdinfo
     decode.py        PCI-ID -> codename / RDNA arch / gfx target
     collector.py     reads gpu_metrics once, fans out to all sources
   ui/                Rich gauges, panels, layout
   app.py / cli.py    live loop + CLI
 ```
 
-The NPU backend is behind an `NpuSource` interface, so a future root `debugfs` source can add
-per-process NPU attribution without touching the UI.
+Per-process NPU usage comes from `/proc/<pid>/fdinfo` of open `/dev/accel/accel*` fds. As of
+kernel 7.3, `amdxdna` reports each client's memory (`drm-total-memory`) but no busy time, so
+the NPU % column shows `—`. If a later driver adds `drm-engine-*` keys, amdtop turns them into
+a per-process NPU % with no code change. As with the iGPU list, other users' processes are only
+visible as root.
 
 ## Development
 

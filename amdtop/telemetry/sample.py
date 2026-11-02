@@ -113,6 +113,16 @@ class GpuProcess:
 
 
 @dataclass
+class NpuProcess:
+    pid: int
+    user: str | None
+    comm: str
+    npu_pct: float | None  # None when the driver exposes no per-engine busy time
+    mem_bytes: int  # drm-total-memory: all buffers this client has allocated
+    runtime_s: float | None = None
+
+
+@dataclass
 class Frame:
     host: str
     uptime_s: float | None
@@ -122,4 +132,5 @@ class Frame:
     npu: NpuSample
     socket_power_w: float | None = None
     gpu_procs: list[GpuProcess] = field(default_factory=list)
+    npu_procs: list[NpuProcess] = field(default_factory=list)
     extra: dict = field(default_factory=dict)

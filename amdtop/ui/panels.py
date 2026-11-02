@@ -19,6 +19,7 @@ from ..telemetry.sample import (
     GpuProcess,
     IgpuSample,
     MemSample,
+    NpuProcess,
     NpuSample,
 )
 from . import gauges
@@ -184,6 +185,26 @@ def _proc_rows(
         else:
             line.append(f"{p.gpu_pct:3.0f}%", style=gauges.ramp_color(p.gpu_pct))
         line.append(f" {gauges.fmt_bytes(p.vram_bytes):>6}", style="magenta")
+        line.append(f" {_fmt_dur(p.runtime_s):>5}", style="yellow")
+        body.add_row(line)
+
+
+def _npu_proc_rows(procs: list[NpuProcess], body: Table, width: int = 48) -> None:
+    body.add_row(Text(
+        f"{'PID':>8} {'USER':<8} {'COMMAND':<12} {'NPU':>4} {'MEM':>6} {'TIME':>5}",
+        style="dim",
+    ))
+    body.add_row(Text("─" * width, style="dim"))
+    for p in procs:
+        line = Text()
+        line.append(f" {p.pid:>7} ")
+        line.append(f"{(p.user or '?')[:8]:<8} ", style="cyan")
+        line.append(f"{p.comm[:12]:<12} ", style="white")
+        if p.npu_pct is None:
+            line.append(f"{'—':>4}", style="dim")
+        else:
+            line.append(f"{p.npu_pct:3.0f}%", style=gauges.ramp_color(p.npu_pct))
+        line.append(f" {gauges.fmt_bytes(p.mem_bytes):>6}", style="magenta")
         line.append(f" {_fmt_dur(p.runtime_s):>5}", style="yellow")
         body.add_row(line)
 
@@ -484,7 +505,7 @@ def render_igpu_compact(g: IgpuSample) -> Panel:
     return Panel(body, box=config.PANEL_BOX, title=f"iGPU · {name}", title_align="left", border_style="magenta")
 
 
-def render_npu_compact(n: NpuSample) -> Panel:
+def render_npu_compact(n: NpuSample, procs: list[NpuProcess] | None = None) -> Panel:
     body = Table.grid(expand=True)
     body.add_column()
     if not n.present:
@@ -499,10 +520,18 @@ def render_npu_compact(n: NpuSample) -> Panel:
     if n.power_state:
         stats.append(n.power_state, style="green" if n.power_state == "D0" else "dim")
     body.add_row(stats)
+    if procs:
+        top = procs[0]
+        line = Text()
+        line.append(f"{top.comm[:12]} ", style="white")
+        line.append(gauges.fmt_bytes(top.mem_bytes), style="magenta")
+        if len(procs) > 1:
+            line.append(f"  +{len(procs) - 1}", style="dim")
+        body.add_row(line)
     return Panel(body, box=config.PANEL_BOX, title="NPU · XDNA", title_align="left", border_style="cyan")
 
 
-def render_npu(n: NpuSample) -> Panel:
+def render_npu(n: NpuSample, procs: list[NpuProcess] | None = None) -> Panel:
     body = Table.grid(expand=True)
     body.add_column()
 
@@ -530,5 +559,8 @@ def render_npu(n: NpuSample) -> Panel:
     body.add_row(stats)
     ident = Text(f"{n.name or 'npu'}  fw {n.fw_version or '?'}", style="dim")
     body.add_row(ident)
+    if procs:
+        body.add_row(Text())
+        _npu_proc_rows(procs, body)
 
     return Panel(body, box=config.PANEL_BOX, title="NPU · XDNA", title_align="left", border_style="cyan")
