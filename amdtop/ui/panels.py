@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as _dt
 import itertools
 
+from rich.console import Console, ConsoleOptions, RenderResult
+from rich.measure import Measurement
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -274,22 +276,99 @@ def _trend_rows(body: Table, g: IgpuSample) -> None:
         ),
         default=1,
     )
-    height = config.IGPU_HISTORY_HEIGHT
+    body.add_row(_TrendPlots(col1, col2, win=win, label_w=label_w, gutter_w=gutter_w,
+                             height=config.IGPU_HISTORY_HEIGHT))
 
-    grid = Table.grid(padding=(0, 3))
-    grid.add_column()
-    grid.add_column()
-    for a, b in itertools.zip_longest(col1, col2):
-        left = _plot_block(a, win=win, label_w=label_w, gutter_w=gutter_w,
-                           height=height) if a and a[1] is not None else [Text()]
-        right = _plot_block(b, win=win, label_w=label_w, gutter_w=gutter_w,
-                            height=height) if b and b[1] is not None else [Text()]
-        n = max(len(left), len(right))
-        left += [Text()] * (n - len(left))
-        right += [Text()] * (n - len(right))
-        for l, r in zip(left, right):
-            grid.add_row(l, r)
-    body.add_row(grid)
+
+def _spark_row(spec, *, label_w: int, value_w: int, spark_w: int) -> Text:
+    """One-line trend: label, current value, sparkline tail, session range."""
+    label, series, unit, color, fmt = spec[:5]
+    is_throttle = len(spec) > 5
+    row = Text()
+    if is_throttle:
+        link = f"{config.USER_GUIDE_URL}#{label}"
+        row.append(label, style=f"bold link {link}")
+        row.append(" " * (label_w - len(label) + 1))
+        val = "n/a" if series.cur is None else f"{series.cur:+.0f}"
+    else:
+        row.append(f"{label:<{label_w}} ", style="bold")
+        val = "n/a" if series.cur is None else f"{fmt.format(series.cur)} {unit}"
+    row.append(f"{val:>{value_w}} ", style=color)
+    if spark_w > 0:
+        row.append_text(gauges.sparkline(series.points[-spark_w:], lo=series.min,
+                                         hi=series.max, color=color))
+    if series.min is not None and series.max is not None:
+        row.append(f" {fmt.format(series.min)}..{fmt.format(series.max)}", style="dim")
+    return row
+
+
+class _TrendPlots:
+    """Trend plots that adapt to the width they are given at render time.
+
+    When there is room, render two columns of multi-row bar plots. Otherwise
+    (e.g. the iGPU pane in the live view on a ~120-column terminal) fall back to
+    one sparkline row per metric, trimmed to the newest points that fit, so
+    nothing wraps or gets cut off with an ellipsis.
+    """
+
+    _GRID_PAD = 3
+
+    def __init__(self, col1, col2, *, win: str, label_w: int, gutter_w: int,
+                 height: int) -> None:
+        self.col1 = col1
+        self.col2 = col2
+        self.win = win
+        self.label_w = label_w
+        self.gutter_w = gutter_w
+        self.height = height
+
+    def _block(self, spec) -> list[Text]:
+        if not spec or spec[1] is None:
+            return [Text()]
+        return _plot_block(spec, win=self.win, label_w=self.label_w,
+                           gutter_w=self.gutter_w, height=self.height)
+
+    def _grid(self) -> tuple[Table, int]:
+        """Two-column bar-plot grid and the width it needs without wrapping."""
+        grid = Table.grid(padding=(0, self._GRID_PAD))
+        grid.add_column(no_wrap=True)
+        grid.add_column(no_wrap=True)
+        widths = [0, 0]
+        for a, b in itertools.zip_longest(self.col1, self.col2):
+            left, right = self._block(a), self._block(b)
+            n = max(len(left), len(right))
+            left += [Text()] * (n - len(left))
+            right += [Text()] * (n - len(right))
+            for l, r in zip(left, right):
+                widths[0] = max(widths[0], l.cell_len)
+                widths[1] = max(widths[1], r.cell_len)
+                grid.add_row(l, r)
+        return grid, widths[0] + self._GRID_PAD + widths[1]
+
+    def _compact(self, max_width: int) -> Table:
+        # Analog trends first, then the throttle counters.
+        specs = [s for s in self.col1[:2] + self.col2[:1] + self.col1[2:] + self.col2[1:]
+                 if s is not None and s[1] is not None]
+        value_w = 9
+        ranges = max((len(f" {s[4].format(s[1].min)}..{s[4].format(s[1].max)}")
+                      for s in specs if s[1].min is not None), default=0)
+        fixed = self.label_w + 1 + value_w + 1 + ranges
+        n_points = max((len(s[1].points) for s in specs), default=0)
+        spark_w = max(0, min(n_points, max_width - fixed))
+        grid = Table.grid()
+        grid.add_column(no_wrap=True, overflow="crop")
+        grid.add_row(Text(f"trends · {self.win}", style="dim"))
+        for spec in specs:
+            grid.add_row(_spark_row(spec, label_w=self.label_w, value_w=value_w,
+                                    spark_w=spark_w))
+        return grid
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        grid, need = self._grid()
+        yield grid if need <= options.max_width else self._compact(options.max_width)
+
+    def __rich_measure__(self, console: Console, options: ConsoleOptions) -> Measurement:
+        return Measurement(1, options.max_width)
 
 
 def render_igpu(

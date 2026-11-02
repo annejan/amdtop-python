@@ -1,7 +1,7 @@
 # amdtop User Guide
 
 This guide explains the metrics `amdtop` displays, with an emphasis on the terms
-that are not self-explanatory. On a Strix Halo APU the CPU, integrated GPU, and
+that are not self-explanatory. On a Ryzen AI APU (Strix Halo, Strix Point, Krackan Point) the CPU, integrated GPU, and
 NPU all share one power, thermal, and memory budget, so most of these numbers are
 about understanding which shared limit a workload is hitting.
 
