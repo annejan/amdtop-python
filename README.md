@@ -46,8 +46,16 @@ Or run straight from the source tree with `python -m amdtop`.
 amdtop                  # live dashboard (default 1.0s refresh)
 amdtop -i 0.5           # refresh every 0.5s
 amdtop --once           # print a single snapshot and exit
+amdtop --prime-memory   # one-time: read real memory bandwidth via sudo dmidecode
 amdtop --version
 ```
+
+On first run amdtop stops with an error until it knows the peak bandwidth of your RAM.
+The iGPU memory gauge needs it, and only SMBIOS reports it (reading it needs root). The
+same APU ships with soldered LPDDR5X or socketed DDR5, so the GPU model alone is not
+enough: on a Krackan Point laptop with DDR5 the GPU-based estimate is ~128 GB/s, the real
+value is 90 GB/s. Run `amdtop --prime-memory` once to read and cache the real value in
+`~/.cache/amdtop/`, or `amdtop --no-strict` to start with the estimate (marked `~`).
 
 In the live view: `q` quits, `+` / `-` speed up / slow down the refresh, and
 `1` / `2` / `3` (or `Tab` to cycle) promote CPU, iGPU, or NPU to the dominant

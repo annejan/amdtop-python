@@ -36,6 +36,11 @@ _MEM_TYPE_CACHE = os.path.join(
 )
 
 
+def cache_dir() -> str:
+    """Directory holding the per-host SMBIOS caches."""
+    return os.path.dirname(_MEM_BW_CACHE)
+
+
 def _first_int(val: str | None) -> int | None:
     if not val:
         return None
@@ -249,10 +254,13 @@ class MemSource:
         )
 
 
-if __name__ == "__main__":
-    # Prime the per-host bandwidth cache. Run this as yourself (NOT under sudo) --
-    # it escalates only dmidecode via sudo (you may be prompted for a password),
-    # and writes the cache as you, so it works on root_squash NFS homes.
+def prime_cache() -> int:
+    """Read SMBIOS via ``sudo dmidecode`` and cache bandwidth/type; return exit code.
+
+    Run this as yourself (NOT under sudo) -- it escalates only dmidecode via sudo
+    (you may be prompted for a password), and writes the cache as you, so it
+    works on root_squash NFS homes.
+    """
     import sys
 
     if os.geteuid() != 0:
@@ -269,18 +277,25 @@ if __name__ == "__main__":
     text = _run_dmidecode_t17(allow_sudo=True)
     if text is None:
         print("could not read SMBIOS memory info via dmidecode.", file=sys.stderr)
-        sys.exit(1)
+        return 1
     bw = _parse_dmidecode_mem_bw(text)
     mem_type = _parse_dmidecode_mem_type(text)
     if bw is None:
         print("could not parse memory bandwidth from dmidecode.", file=sys.stderr)
-        sys.exit(1)
+        return 1
     if not _write_cache(bw):
         print(f"could not write cache to {_MEM_BW_CACHE}", file=sys.stderr)
-        sys.exit(1)
+        return 1
     print(
         f"memory bandwidth peak: {bw / 1000:.1f} GB/s ({bw:.0f} MB/s)\n"
         f"cached at {_MEM_BW_CACHE}"
     )
     if mem_type and _write_type_cache(mem_type):
         print(f"memory type: {mem_type}\ncached at {_MEM_TYPE_CACHE}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(prime_cache())
