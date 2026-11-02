@@ -117,7 +117,7 @@ IGPU_THROTTLE_PLOTS = ("thm_gfx", "fppt", "sppt", "spl")
 # Base URL of the user guide; throttle plot labels become OSC 8 hyperlinks to the
 # per-term anchor (e.g. #spl). Terminals that honor OSC 8 render them clickable;
 # others show the plain label. The anchor is the counter name itself.
-USER_GUIDE_URL = "https://github.com/jimw567/amdtop/blob/main/docs/USER_GUIDE.md"
+USER_GUIDE_URL = "https://github.com/annejan/amdtop/blob/main/docs/USER_GUIDE.md"
 
 # Panel border glyphs. rich's default ROUNDED (╭╮╰╯) corners are absent from
 # some terminal fonts and get substituted by a stand-in like "_", which eats a
