@@ -100,9 +100,12 @@ visible as root.
 ## Development
 
 ```bash
-pip install pytest
+python -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
 pytest
 ```
+
+Or without a venv: `uv run --with pytest --with rich pytest`.
 
 ## Tested hardware
 

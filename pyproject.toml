@@ -8,6 +8,14 @@ version = "0.1.0"
 description = "btop-style CPU/iGPU/NPU monitor for AMD Ryzen AI APUs"
 requires-python = ">=3.10"
 dependencies = ["rich>=13.0"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Monitoring",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [project.scripts]
 amdtop = "amdtop.cli:main"
